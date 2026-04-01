@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Quality Control</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:        #0d1117;
+            --surface:   #161b22;
+            --border:    #30363d;
+            --ok:        #3fb950;
+            --ok-dim:    #1a3a22;
+            --ng:        #f85149;
+            --ng-dim:    #3a1a1a;
+            --accent:    #58a6ff;
+            --muted:     #8b949e;
+            --text:      #e6edf3;
+            --mono:      'Share Tech Mono', monospace;
+            --sans:      'Barlow', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── MODAL MULAI SESI ── */
+        #modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            backdrop-filter: blur(4px);
+        }
+        #modal-overlay.hidden { display: none; }
+        .modal-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px 48px;
+            text-align: center;
+            max-width: 360px;
+            width: 90%;
+        }
+        .modal-icon { font-size: 3rem; margin-bottom: 16px; }
+        .modal-box h2 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            letter-spacing: .04em;
+            margin-bottom: 8px;
+        }
+        .modal-box p {
+            font-size: .88rem;
+            color: var(--muted);
+            line-height: 1.6;
+            margin-bottom: 28px;
+        }
+        #btn-start-session {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            background: var(--accent);
+            color: #000;
+            font-family: var(--sans);
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: .05em;
+            cursor: pointer;
+            transition: all .2s;
+        }
+        #btn-start-session:hover { background: #79c0ff; transform: translateY(-1px); }
+
+        /* ── HEADER ── */
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 28px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .logo { display: flex; align-items: center; gap: 10px; }
+        .logo-icon {
+            width: 32px; height: 32px;
+            background: var(--accent); border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .logo-text {
+            font-size: 1rem; font-weight: 700;
+            letter-spacing: .04em; text-transform: uppercase; color: var(--text);
+        }
+        .logo-text span { color: var(--accent); }
+
+        #cam-badge {
+            display: flex; align-items: center; gap: 7px;
+            font-family: var(--mono); font-size: .78rem; color: var(--muted);
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 20px; padding: 5px 14px; transition: all .3s;
+        }
+        #cam-badge .dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--muted); transition: background .3s;
+        }
+        #cam-badge.ok  { border-color: var(--ok); color: var(--ok); }
+        #cam-badge.ok .dot { background: var(--ok); box-shadow: 0 0 6px var(--ok); animation: pulse-ok 1.4s infinite; }
+        #cam-badge.err { border-color: var(--ng); color: var(--ng); }
+        #cam-badge.err .dot { background: var(--ng); box-shadow: 0 0 6px var(--ng); }
+
+        @keyframes pulse-ok { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+
+        /* ── MAIN LAYOUT ── */
+        main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 0;
+        }
+
+        /* ── VIDEO PANEL ── */
+        .video-panel {
+            position: relative; background: #000;
+            display: flex; align-items: center; justify-content: center;
+            border-right: 1px solid var(--border); min-height: 480px;
+        }
+        .video-panel img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+        #cam-overlay {
+            display: none; position: absolute; inset: 0;
+            background: rgba(0,0,0,.75);
+            align-items: center; justify-content: center;
+            flex-direction: column; gap: 12px;
+            font-family: var(--mono); color: var(--ng); font-size: 1rem; text-align: center;
+        }
+        #cam-overlay.show { display: flex; }
+        .spin {
+            width: 36px; height: 36px;
+            border: 3px solid var(--border); border-top-color: var(--accent);
+            border-radius: 50%; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── SIDEBAR ── */
+        .sidebar { display: flex; flex-direction: column; overflow-y: auto; }
+
+        .status-card {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+        }
+        .status-card h4 {
+            font-size: .7rem; text-transform: uppercase;
+            letter-spacing: .1em; color: var(--muted); margin-bottom: 10px;
+        }
+        #result-indicator {
+            display: flex; align-items: center; justify-content: center;
+            height: 72px; border-radius: 8px;
+            font-family: var(--mono); font-size: 2rem; font-weight: 700;
+            letter-spacing: .12em; background: var(--bg);
+            color: var(--muted); border: 2px solid var(--border); transition: all .25s;
+        }
+        #result-indicator.ok {
+            background: var(--ok-dim); color: var(--ok); border-color: var(--ok);
+            box-shadow: 0 0 20px rgba(63,185,80,.2);
+        }
+        #result-indicator.ng {
+            background: var(--ng-dim); color: var(--ng); border-color: var(--ng);
+            box-shadow: 0 0 20px rgba(248,81,73,.2);
+        }
+
+        .counters { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--border); }
+        .counter { padding: 20px 24px; text-align: center; }
+        .counter:first-child { border-right: 1px solid var(--border); }
+        .counter label {
+            display: block; font-size: .7rem; text-transform: uppercase;
+            letter-spacing: .1em; margin-bottom: 6px;
+        }
+        .counter label.ok { color: var(--ok); }
+        .counter label.ng { color: var(--ng); }
+        .counter .num { font-family: var(--mono); font-size: 2.4rem; line-height: 1; font-weight: 700; }
+        #count_ok { color: var(--ok); }
+        #count_ng  { color: var(--ng); }
+
+        /* ── PERFORMA CARD ── */
+        .perf-card { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--border); }
+        .perf-item { padding: 16px 24px; text-align: center; }
+        .perf-item:first-child { border-right: 1px solid var(--border); }
+        .perf-item label {
+            display: block; font-size: .7rem; text-transform: uppercase;
+            letter-spacing: .1em; color: var(--muted); margin-bottom: 6px;
+        }
+        .perf-val { font-family: var(--mono); font-size: 1.6rem; line-height: 1; font-weight: 700; color: var(--accent); }
+        .perf-unit { font-family: var(--mono); font-size: .7rem; color: var(--muted); margin-top: 2px; }
+        .perf-val.fast { color: var(--ok); }
+        .perf-val.slow { color: var(--ng); }
+
+        /* ── CHART ── */
+        .chart-wrap {
+            padding: 20px 24px; border-bottom: 1px solid var(--border); background: var(--surface);
+        }
+        .chart-wrap h4 {
+            font-size: .7rem; text-transform: uppercase;
+            letter-spacing: .1em; color: var(--muted); margin-bottom: 12px;
+        }
+        .chart-wrap canvas { max-height: 160px; }
+
+        /* ── MANUAL CAPTURE ── */
+        .capture-wrap {
+            padding: 20px 24px; background: var(--surface);
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .capture-wrap h4 {
+            font-size: .7rem; text-transform: uppercase;
+            letter-spacing: .1em; color: var(--muted);
+        }
+        #btn-manual {
+            width: 100%; padding: 14px; border: none; border-radius: 8px;
+            background: var(--accent); color: #000;
+            font-family: var(--sans); font-size: .95rem; font-weight: 700;
+            letter-spacing: .05em; cursor: pointer; transition: all .2s;
+        }
+        #btn-manual:hover:not(:disabled) { background: #79c0ff; transform: translateY(-1px); }
+        #btn-manual:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; transform: none; }
+        #capture-msg {
+            font-family: var(--mono); font-size: .78rem;
+            color: var(--muted); min-height: 18px; text-align: center;
+        }
+        #capture-msg.ok  { color: var(--ok); }
+        #capture-msg.err { color: var(--ng); }
+
+        /* ── RESPONSIVE MOBILE FIX ── */
+        @media (max-width: 768px) {
+            header {
+                padding: 12px 16px;
+                /* Opsional: Jika ingin logo dan badge turun ke bawah saat layar sangat sempit */
+                flex-wrap: wrap; 
+                gap: 12px;
+            }
+
+            main {
+                /* Mengubah grid dari 2 kolom menjadi 1 kolom yang bertumpuk */
+                grid-template-columns: 1fr; 
+            }
+
+            .video-panel {
+                /* Mengurangi tinggi minimal agar sidebar tetap terlihat di layar HP tanpa scroll kejauhan */
+                min-height: 280px; 
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+
+            /* Mengurangi padding di komponen sidebar agar tidak makan tempat */
+            .status-card, .counter, .perf-item, .chart-wrap, .capture-wrap {
+                padding: 16px;
+            }
+
+            /* Sedikit mengecilkan font counter angka agar tetap proporsional */
+            .counter .num {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div id="modal-overlay">
+    <div class="modal-box">
+        <div class="modal-icon">🔬</div>
+        <h2>Siap Memulai Sesi?</h2>
+        <p>Klik tombol di bawah untuk mengaktifkan sistem termasuk indikasi suara OK / NG.</p>
+        <button id="btn-start-session">▶ Mulai Sesi</button>
+    </div>
+</div>
+
+<header>
+    <div class="logo">
+        <div class="logo-icon">🔬</div>
+        <div class="logo-text">AI Quality <span>Control</span></div>
+    </div>
+    <div id="cam-badge">
+        <span class="dot"></span>
+        <span id="cam-label">Menghubungkan...</span>
+    </div>
+</header>
+
+<main>
+    <div class="video-panel">
+        <img src="{{ url_for('video_feed') }}" alt="Live Camera Feed">
+        <div id="cam-overlay">
+            <div class="spin"></div>
+            <div>KAMERA TERPUTUS</div>
+            <div style="font-size:.75rem;color:var(--muted)">Mencoba menghubungkan ulang...</div>
+        </div>
+    </div>
+
+    <div class="sidebar">
+
+        <div class="status-card">
+            <h4>Hasil Deteksi Terakhir</h4>
+            <div id="result-indicator">— STANDBY —</div>
+        </div>
+
+        <div class="counters">
+            <div class="counter">
+                <label class="ok">Total OK</label>
+                <div class="num" id="count_ok">0</div>
+            </div>
+            <div class="counter">
+                <label class="ng">Total NG</label>
+                <div class="num" id="count_ng">0</div>
+            </div>
+        </div>
+
+        <div class="perf-card">
+            <div class="perf-item">
+                <label>FPS Kamera</label>
+                <div class="perf-val" id="fps-val">—</div>
+                <div class="perf-unit">frame/detik</div>
+            </div>
+            <div class="perf-item">
+                <label>Cycle Time</label>
+                <div class="perf-val" id="cycle-val">—</div>
+                <div class="perf-unit">detik</div>
+            </div>
+        </div>
+
+        <div class="chart-wrap">
+            <h4>Distribusi Hasil</h4>
+            <canvas id="myChart"></canvas>
+        </div>
+
+        <div class="capture-wrap">
+            <h4>Manual Capture</h4>
+            <button id="btn-manual" disabled>📷 Simpan Sekarang</button>
+            <div id="capture-msg">Menunggu part...</div>
+        </div>
+
+    </div>
+</main>
+
+<script>
+    // ── State ──
+    let prevAlreadySaved = false;
+    let audioUnlocked    = false;
+    let myChart;
+
+    // ── Modal Mulai Sesi ──
+    document.getElementById('btn-start-session').addEventListener('click', function () {
+        // Unlock audio API — harus dipanggil dari dalam event klik langsung
+        audioCtx.resume();
+        audioUnlocked = true;
+        document.getElementById('modal-overlay').classList.add('hidden');
+        // Mulai polling setelah sesi dimulai
+        startPolling();
+    });
+
+    // ── Web Audio API ──
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function beep(freqs, duration, type, gain) {
+        duration = duration || 0.18; type = type || 'sine'; gain = gain || 0.5;
+        audioCtx.resume().then(function () {
+            var startTime = audioCtx.currentTime;
+            freqs.forEach(function (freq, i) {
+                var osc = audioCtx.createOscillator();
+                var vol = audioCtx.createGain();
+                osc.connect(vol); vol.connect(audioCtx.destination);
+                var t = startTime + i * (duration + 0.04);
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, t);
+                vol.gain.setValueAtTime(gain, t);
+                vol.gain.exponentialRampToValueAtTime(0.001, t + duration);
+                osc.start(t); osc.stop(t + duration);
+            });
+        });
+    }
+    function playAudio(type) {
+        if (!audioUnlocked) return;
+        if (type === 'ok') beep([1400, 1800], 0.15, 'sine', 0.45);
+        else if (type === 'ng') beep([420, 280], 0.22, 'square', 0.35);
+    }
+
+    // ── Chart.js ──
+    const ctx = document.getElementById('myChart').getContext('2d');
+    myChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['OK', 'NG'],
+            datasets: [{
+                data: [0, 0],
+                backgroundColor: ['#3fb950', '#f85149'],
+                borderColor: ['#1a3a22', '#3a1a1a'],
+                borderWidth: 3
+            }]
+        },
+        options: {
+            plugins: { legend: { labels: { color: '#8b949e', font: { family: 'Barlow' } } } },
+            cutout: '60%'
+        }
+    });
+
+    // ── Update Stats ──
+    function updateStats() {
+        fetch('/get_stats')
+            .then(r => r.json())
+            .then(data => {
+                // Counter & Chart
+                document.getElementById('count_ok').innerText = data.ok || 0;
+                document.getElementById('count_ng').innerText = data.ng || 0;
+                myChart.data.datasets[0].data = [data.ok || 0, data.ng || 0];
+                myChart.update();
+
+                // FPS
+                const fpsEl = document.getElementById('fps-val');
+                if (fpsEl) fpsEl.innerText = data.fps > 0 ? data.fps : '—';
+
+                // Cycle Time
+                const cycleEl = document.getElementById('cycle-val');
+                if (cycleEl) {
+                    if (data.cycle_time !== null && data.cycle_time !== undefined) {
+                        cycleEl.innerText   = data.cycle_time;
+                        cycleEl.className   = 'perf-val ' + (data.cycle_time < 5 ? 'fast' : 'slow');
+                    } else {
+                        cycleEl.innerText = '—';
+                        cycleEl.className = 'perf-val';
+                    }
+                }
+
+                // Status kamera
+                const badge    = document.getElementById('cam-badge');
+                const camLabel = document.getElementById('cam-label');
+                const overlay  = document.getElementById('cam-overlay');
+                if (data.camera_status === 'ok') {
+                    badge.className = 'ok'; camLabel.innerText = 'Kamera Aktif';
+                    overlay.classList.remove('show');
+                } else if (data.camera_status === 'disconnected') {
+                    badge.className = 'err'; camLabel.innerText = 'Kamera Terputus';
+                    overlay.classList.add('show');
+                } else {
+                    badge.className = ''; camLabel.innerText = 'Menghubungkan...';
+                    overlay.classList.remove('show');
+                }
+
+                // Result indicator
+                const indicator = document.getElementById('result-indicator');
+                if (!data.part_present) {
+                    indicator.className = ''; indicator.innerText = '— STANDBY —';
+                } else {
+                    const lbl = data.last_label ? data.last_label.toUpperCase() : null;
+                    if (lbl === 'OK') { indicator.className = 'ok'; indicator.innerText = '✔  OK'; }
+                    else if (lbl === 'NG') { indicator.className = 'ng'; indicator.innerText = '✖  NG'; }
+                }
+
+                // ── Suara: bunyi HANYA saat already_saved berubah false → true ──
+                if (data.already_saved && !prevAlreadySaved) {
+                    const lbl = data.last_label ? data.last_label.toUpperCase() : null;
+                    if (lbl === 'OK') playAudio('ok');
+                    else if (lbl === 'NG') playAudio('ng');
+                }
+                // Reset prevAlreadySaved saat part pergi
+                prevAlreadySaved = data.part_present ? data.already_saved : false;
+
+                // Tombol manual
+                const btn = document.getElementById('btn-manual');
+                const msg = document.getElementById('capture-msg');
+                if (!data.part_present) {
+                    btn.disabled = true; msg.className = ''; msg.innerText = 'Menunggu part...';
+                } else if (data.already_saved) {
+                    btn.disabled = true; msg.className = 'ok'; msg.innerText = '✔ Sudah tersimpan otomatis';
+                } else {
+                    btn.disabled = false; msg.className = ''; msg.innerText = 'Part terdeteksi — belum tersimpan';
+                }
+            })
+            .catch(() => {
+                document.getElementById('cam-badge').className = 'err';
+                document.getElementById('cam-label').innerText = 'Server Error';
+            });
+    }
+
+    // Tombol manual capture
+    document.getElementById('btn-manual').addEventListener('click', function () {
+        this.disabled = true;
+        fetch('/manual_capture', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                const msg = document.getElementById('capture-msg');
+                msg.className = data.success ? 'ok' : 'err';
+                msg.innerText = (data.success ? '✔ ' : '✖ ') + data.message;
+            });
+    });
+
+    // Polling dimulai hanya setelah tombol Mulai Sesi diklik
+    function startPolling() {
+        updateStats();
+        setInterval(updateStats, 1000);
+    }
+</script>
+</body>
+</html>
